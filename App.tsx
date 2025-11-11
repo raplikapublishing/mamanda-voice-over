@@ -54,6 +54,8 @@ const App: React.FC = () => {
         mixing: false,
     });
     const [loadingMessage, setLoadingMessage] = useState('');
+    const [mixingFailed, setMixingFailed] = useState<boolean>(false);
+
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
@@ -87,6 +89,7 @@ const App: React.FC = () => {
         }
         setIsLoading(prev => ({ ...prev, veo: true }));
         setLoadingMessage('Generating video with Veo... This can take a few minutes. 🎥');
+        setMixingFailed(false);
         setVideoSrc(null);
         setVideoFile(null);
         setAnalysisResult('');
@@ -114,6 +117,7 @@ const App: React.FC = () => {
     const handleVideoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
+            setMixingFailed(false);
             setVideoFile(file);
             setVideoSrc(URL.createObjectURL(file));
             setAnalysisResult('');
@@ -149,6 +153,7 @@ const App: React.FC = () => {
         }
         setIsLoading(prev => ({ ...prev, tts: true }));
         setLoadingMessage('Generating AI voice-over... 🎙️');
+        setMixingFailed(false);
         try {
             const audioBase64 = await generateVoiceOver(script, voiceStyle, voiceOverDuration);
             const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
@@ -252,6 +257,7 @@ const App: React.FC = () => {
             return;
         }
     
+        setMixingFailed(false);
         setIsLoading(prev => ({ ...prev, mixing: true }));
         setLoadingMessage('Mixing audio and video... Please wait. 🎧');
     
@@ -335,22 +341,35 @@ const App: React.FC = () => {
                 }
             };
             
-            // 7. Start recording & playback
+            // 7. Start recording & playback (PERBAIKAN SINKRONISASI DI SINI)
             videoEl.currentTime = 0;
             videoEl.muted = true; // Mute original video audio
             
             recorder.start();
-            voiceOverSource.start();
+            
+            // Tunggu hingga pemutaran video dimulai untuk sinkronisasi yang lebih baik
+            await videoEl.play(); 
+
+            // Gunakan AudioContext.currentTime sebagai titik sinkronisasi
+            const syncTime = audioCtx.currentTime;
+    
+            // Mulai voice-over dan musik tepat pada saat ini
+            voiceOverSource.start(syncTime);
+            
             if (musicElement) {
+                musicElement.currentTime = 0;
                 musicElement.play();
             }
-            await videoEl.play();
     
             // 8. Stop recording when video ends
             videoEl.onended = () => {
                 if (recorder.state === 'recording') {
                     recorder.stop();
                 }
+
+                // PERBAIKAN: Hentikan voiceOverSource secara eksplisit
+                voiceOverSource.stop(); 
+                
                 if (musicElement) {
                     musicElement.pause();
                 }
@@ -360,7 +379,8 @@ const App: React.FC = () => {
         } catch (error: any) {
             console.error('Failed to mix and download video:', error);
             alert(`An error occurred during the mixing process. Check console for details. Error: ${error.message}`);
-             if (audioCtx && audioCtx.state !== 'closed') {
+            setMixingFailed(true);
+            if (audioCtx && audioCtx.state !== 'closed') {
                 audioCtx.close();
             }
         } finally {
@@ -369,6 +389,18 @@ const App: React.FC = () => {
         }
     };
 
+    const handleDownloadVoiceOverOnly = () => {
+        if (!voiceOverAudioUrl) {
+            alert('No voice-over available to download.');
+            return;
+        }
+        const a = document.createElement('a');
+        a.href = voiceOverAudioUrl;
+        a.download = 'ai-voice-over.wav';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    };
 
     const isAnyLoading = Object.values(isLoading).some(Boolean);
 
@@ -558,6 +590,15 @@ const App: React.FC = () => {
                                 <DownloadIcon className="w-5 h-5 mr-2"/>
                                 Download Video
                             </button>
+                            {mixingFailed && (
+                                <div className="text-center text-sm text-yellow-400 pt-2">
+                                    <p>Video mixing failed. You can download the voice-over separately.</p>
+                                    <button onClick={handleDownloadVoiceOverOnly} className="mt-2 w-full flex items-center justify-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition">
+                                        <MicIcon className="w-5 h-5 mr-2"/>
+                                        Download Voice-Over Only (.wav)
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
