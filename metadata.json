@@ -1,0 +1,5 @@
+{
+  "name": "AI Video Suite",
+  "description": "An AI-powered application to generate videos, create voice-overs, and analyze video content using Gemini API. Generate new video clips with Veo, add TTS voice-overs, and get deep insights from your existing footage.",
+  "requestFramePermissions": []
+}
